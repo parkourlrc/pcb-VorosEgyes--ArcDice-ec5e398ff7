@@ -19,34 +19,30 @@ using arcdice::kCenterMask;
 using arcdice::kDiagonalAMask;
 using arcdice::kDiagonalBMask;
 using arcdice::kMiddleRowMask;
+using arcdice::Prng;
 
 volatile bool buttonInterruptPending = false;
-volatile uint8_t randomEntropy = 0;
+// 16 bits of accumulated entropy, kept as two bytes because the ATtiny13A
+// is an 8-bit AVR.
+volatile uint8_t randomEntropyHi = 0;
+volatile uint8_t randomEntropyLo = 0;
 volatile uint8_t edgeCounter = 0;
-volatile uint8_t prngState = 0x5A;
+Prng prng;
 
 void showFace(uint8_t face) {
   PORTB = (PORTB & ~kDisplayMask) | kDiceFaceMasks[face];
 }
 
-uint8_t nextRandomByte() {
-  uint8_t lsb = prngState & 1;
-  prngState >>= 1;
-  if (lsb) {
-    prngState ^= 0xB8;
-  }
-  return prngState;
+// Folds 16 bits of button-press entropy into the PRNG state.
+void mixEntropy(uint16_t entropy) {
+  prng.mix(entropy);
 }
 
-void mixEntropy(uint8_t entropy) {
-  prngState ^= entropy ^ TCNT0;
-  if (!prngState) {
-    prngState = 0x5A;
-  }
-}
-
+// Draws a face uniformly from 1..6.
+// The PRNG itself lives in include/dice.h so the host-native test runner
+// exercises the exact same code the firmware runs.
 uint8_t randomFace() {
-  return (nextRandomByte() % 6) + 1;
+  return prng.face();
 }
 
 // Waits up to `ms`, 1 ms at a time, so a fresh button press can interrupt
@@ -102,7 +98,7 @@ void setup() {
   PCMSK |= kButtonMask; // Enable interrupt for the button pin
   sei(); // Enable global interrupts
 
-  mixEntropy(TCNT0);
+  mixEntropy((static_cast<uint16_t>(TCNT0) << 8) | TCNT0);
   PORTB &= ~kDisplayMask; // Ensure all display groups are off at start
   runStartupTest();
 }
@@ -116,7 +112,10 @@ void performRoll() {
     restart = false;
     buttonInterruptPending = false;
     uint8_t rollCount = kDemoSpinCount * 2; // Roll spins twice as long as the demo.
-    for (uint8_t i = 0; i <= rollCount; ++i) {
+    // The loop draws rollCount faces. With the counter-based PRNG every
+    // draw is a fresh avalanche of the counter, so the walk always
+    // covers the whole state space.
+    for (uint8_t i = 0; i < rollCount; ++i) {
       showFace(randomFace());
       if (waitOrPressed(kRollStepMs)) {
         restart = true;
@@ -135,12 +134,14 @@ void loop() {
   if (buttonInterruptPending) {
     noInterrupts();
     buttonInterruptPending = false;
-    uint8_t entropy = randomEntropy;
+    uint16_t entropy = (static_cast<uint16_t>(randomEntropyHi) << 8) | randomEntropyLo;
+    randomEntropyHi = 0;
+    randomEntropyLo = 0;
     interrupts();
 
     delay(25);
     if (!(PINB & kButtonMask)) {
-      mixEntropy((entropy << 1) ^ PINB);
+      mixEntropy(entropy ^ PINB);
       performRoll();
     }
   }
@@ -153,10 +154,15 @@ void loop() {
 // Accumulate entropy across multiple edges instead of overwriting on
 // each interrupt. A single TCNT0 sample is weak; XORing PINB and
 // counting edges gives more bits per button press.
+//
+// 16 bits are accumulated (two bytes) so the full width of the PRNG
+// state is refreshed on every press — an 8-bit accumulator could only
+// ever reach half of it.
 ISR(PCINT0_vect) {
   if (!(PINB & kButtonMask)) {
-    randomEntropy ^= TCNT0;
-    randomEntropy ^= PINB;
+    randomEntropyLo ^= TCNT0;
+    randomEntropyLo ^= PINB;
+    randomEntropyHi ^= edgeCounter;
     edgeCounter++;
     buttonInterruptPending = true;
   }

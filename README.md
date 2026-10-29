@@ -12,6 +12,16 @@ Keywords: digital dice, ATtiny13 dice, LED dice, DIY electronic dice.
 - Drives a 7-point dice face from only 4 MCU output lines.
 - Uses button wake-up and sleep mode to reduce power draw.
 
+### Randomness
+
+The roll is statistically uniform — every face comes up 16.67% of the
+time. The generator is a counter-based PRNG with the SplitMix32
+finalizer, seeded from the button-press timing, and the 32-bit output is
+mapped onto 1..6 with rejection sampling so the mapping is exactly
+uniform. The distribution is pinned by host-native statistical tests
+(`test/test_prng_distribution/`); see the CHANGELOG for the measured
+before/after numbers.
+
 ## Firmware
 
 - Source: `src/main.cpp`

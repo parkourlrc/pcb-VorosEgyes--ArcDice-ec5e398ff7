@@ -158,39 +158,35 @@ void test_face_mask_function_handles_out_of_range(void) {
 
 // --- PRNG determinism (host-side simulation) --------------------------------
 //
-// The firmware PRNG is xorshift-step-on-LSB with polynomial 0xB8.
-// We can't run the actual ISR on the host, but we can verify that the
-// sequence is deterministic and not degenerate (all zeros, period 1).
+// The firmware PRNG is a 16-bit xorshift (shifts 7, 9, 8) with rejection
+// sampling onto 1..6. It lives in include/dice.h as arcdice::Prng so this
+// test exercises the exact same code the firmware runs.
+//
+// Note: the previous implementation used an 8-bit Galois LFSR with
+// `(byte % 6) + 1`, which was measurably biased — see
+// test/test_prng_distribution/ for the statistical proof.
 
 void test_prng_state_is_nonzero_after_seed(void) {
-    // After the firmware initializes prngState = 0x5A, a single call to
-    // the equivalent mix step must leave the state nonzero. A zero state
-    // would re-seed to 0x5A, making "nextRandomByte() % 6" repeat.
-    uint8_t state = 0x5A;
-    uint8_t lsb = state & 1;
-    state >>= 1;
-    if (lsb) {
-        state ^= 0xB8;
-    }
-    TEST_ASSERT_NOT_EQUAL(0, state);
+    // After the firmware initializes the PRNG, a single mix step must
+    // leave the state nonzero. A zero state would re-seed and make the
+    // face sequence repeat.
+    arcdice::Prng prng;
+    TEST_ASSERT_NOT_EQUAL(0, prng.state());
+
+    prng.mix(0x1234);
+    TEST_ASSERT_NOT_EQUAL(0, prng.state());
 }
 
 void test_prng_sequence_produces_diverse_outputs(void) {
-    // The face output is (nextRandomByte() % 6) + 1. Across many calls,
-    // the distribution should not collapse to a single value (which would
-    // happen if the state were stuck or the polynomial were wrong).
-    uint8_t state = 0x5A;
+    // The face output is prng.face(). Across many calls, the distribution
+    // should not collapse to a single value (which would happen if the
+    // state were stuck or the mixer were wrong).
+    arcdice::Prng prng;
     uint8_t counts[7] = {0};
     for (int i = 0; i < 600; ++i) {
-        uint8_t lsb = state & 1;
-        state >>= 1;
-        if (lsb) {
-            state ^= 0xB8;
-        }
-        uint8_t face = (state % 6) + 1;
-        counts[face]++;
+        counts[prng.face()]++;
     }
-    // Each face 1..6 should appear at least once across 600 trials.
+    // Each face 1..6 should appear at least once across 600 PRNG draws.
     // (Statistical: with a uniform PRNG and 100 samples per face expected,
     // the chance of a face being zero is negligible.)
     for (uint8_t face = 1; face <= 6; ++face) {

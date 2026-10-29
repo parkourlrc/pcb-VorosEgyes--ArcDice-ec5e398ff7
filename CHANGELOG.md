@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Biased dice roll — faces 1, 3 and 4 came up 20% of the time.**
+  The firmware used an 8-bit Galois LFSR (period 255) and mapped the
+  byte onto a face with `(byte % 6) + 1`, while the roll animation drew
+  **17** faces per roll (`for (i = 0; i <= rollCount; ++i)` with
+  `rollCount = 16`). Because `gcd(17, 255) = 17`, walking the LFSR 17
+  steps at a time only ever visited **15 of the 255 states**, and within
+  that sub-cycle `byte % 6` was strongly correlated with the walk
+  position.
+
+  Measured over 600,000 simulated rolls with constant button timing:
+
+  | face | old | new | expected |
+  |------|-----|-----|----------|
+  | 1 | 20.00% | 16.67% | 16.67% |
+  | 2 | 13.33% | 16.67% | 16.67% |
+  | 3 | 20.00% | 16.67% | 16.67% |
+  | 4 | 20.00% | 16.67% | 16.67% |
+  | 5 | 13.33% | 16.67% | 16.67% |
+  | 6 | 13.33% | 16.67% | 16.67% |
+
+  Old chi-square = 2400 against a critical value of 11.07; the new
+  generator is uniform under every entropy model tested (constant,
+  variable, weak and zero button-timing entropy).
+
+  The PRNG is now a **counter-based generator with the SplitMix32
+  finalizer**: every draw is a pure function of (counter, entropy), so
+  there is no state recursion and no sub-cycle to fall into. Rejection
+  sampling maps the 32-bit output onto 1..6 exactly uniformly
+  (`4294967286 = 6 * 715827881`). The roll animation now draws 16
+  faces, and the button press contributes 16 bits of entropy instead
+  of 8.
+
+  A plain 16-bit xorshift was tried first and rejected: xorshift and
+  XOR are both GF(2)-affine maps, so the state recursion stays affine
+  and the residual bias (chi-square ~112) remained far above the
+  threshold.
+
+### Added
+- `test/test_prng_distribution/` — host-native statistical regression
+  tests for the roll distribution. The previous test only checked that
+  every face appeared at least once in 600 draws, which a heavily
+  biased generator also satisfies, so the defect slipped through CI.
+  The new suite pins the uniformity with a ±0.5 percentage point band
+  (≈10 sigma at 600k rolls) plus a 24-stream chi-square check.
+
 ### Planned
 - Detailed assembly guide with HV programming instructions for `RSTDISBL`
   (deferred — see the discussion in the release-readiness audit, the
