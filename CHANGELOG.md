@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Planned
+- Detailed assembly guide with HV programming instructions for `RSTDISBL`
+  (deferred — see the discussion in the release-readiness audit, the
+  ATtiny13A HV fuse programming is documented separately).
+
+## [1.1.2] - 2026-10-09
+
 ### Fixed
 - **Biased dice roll — faces 1, 3 and 4 came up 20% of the time.**
   The firmware used an 8-bit Galois LFSR (period 255) and mapped the
@@ -53,12 +60,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The new suite pins the uniformity with a ±0.5 percentage point band
   (≈10 sigma at 600k rolls) plus a 24-stream chi-square check.
 
-### Planned
-- Detailed assembly guide with HV programming instructions for `RSTDISBL`
-  (deferred — see the discussion in the release-readiness audit, the
-  ATtiny13A HV fuse programming is documented separately).
-- Initial public **v1.0.0** release (this section is collapsed into the
-  [1.0.0] entry below once the release tag is pushed).
+## [1.1.1] - 2026-10-05
+
+### Changed
+- The PlatformIO default environment is now `attiny13a`, so a bare
+  `pio run` builds the firmware without an explicit `-e` flag.
+
+### Fixed
+- Repaired the broken links in the documentation site and the README.
+- Corrected the GitHub repository URLs in the docs.
+- Rotated the startup demo animation counterclockwise so it matches the
+  README description.
+- Corrected the GitHub Pages image paths.
+- Regenerated the Gerber V2 export after the PCB update.
+
+### Added
+- Documentation site files and a photo gallery with real assembled and
+  bare-PCB images.
+
+## [1.1.0] - 2026-10-05
+
+### Changed
+- **Constant-speed roll animation.** The dice no longer slows down
+  towards the end of the spin; every step takes the same 30 ms.
+- **Restart-on-press.** A fresh button press during the animation or
+  while the result is displayed restarts the roll immediately instead of
+  being ignored until the animation finishes.
+- **Running-light startup demo.** The power-on self-test now chases
+  through the four LED groups for three laps before going dark, so a
+  dead segment is obvious immediately.
+- **Hardware V2.1** — the PCB silkscreen and the Gerber job file's
+  `ProjectId.Revision` both read `v2.1`.
+- Regenerated the Gerber V2 export; drill files are emitted as Gerber X2
+  (`PTH-drl.gbr`, `NPTH-drl.gbr`).
+
+### Added
+- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and the issue / PR templates.
+- A Gerber V2 README.
+
+### Notes for downstream users
+- **Hardware**: use the V2.1 Gerber set. The V2 silkscreen said
+  `v2.0` while the job file said `v2.1`; both now agree.
+- **Firmware**: flashing is unchanged — `pio run -e attiny13a` then
+  `pio run -e attiny13a -t upload`.
 
 ## [1.0.0] - 2026-07-19
 
